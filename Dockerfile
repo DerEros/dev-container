@@ -1,5 +1,5 @@
 # Dev Container — Ubuntu 24.04
-# Tools: Node.js LTS, Python (pyenv), Java/Maven/Gradle (sdkman),
+# Tools: Node.js LTS, Python (pyenv), Java/Maven/Gradle (sdkman), Rust (rustup),
 #        Angular CLI, GitHub CLI, Docker-in-Docker, Azure CLI,
 #        kubectl, Terraform, Claude Code, zsh + tmux + oh-my-zsh + Powerlevel10k
 #
@@ -151,13 +151,24 @@ RUN bash -c "source ${SDKMAN_DIR}/bin/sdkman-init.sh \
     && sdk install gradle \
     && sdk flush archives"
 
-# ── 13. Docker alias for DinD convenience ────────────────────────────────────
+# ── 13. Rust (via rustup) ─────────────────────────────────────────────────────
+ENV CARGO_HOME="/home/dev/.cargo"
+ENV RUSTUP_HOME="/home/dev/.rustup"
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path \
+    && echo '' >> "${HOME}/.zshrc" \
+    && echo '# Rust / cargo' >> "${HOME}/.zshrc" \
+    && echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> "${HOME}/.zshrc"
+
+RUN "${CARGO_HOME}/bin/cargo" install cargo-watch cargo-edit
+
+# ── 14. Docker alias for DinD convenience ────────────────────────────────────
 RUN echo '' >> "${HOME}/.zshrc" \
     && echo '# Start Docker daemon when needed (DinD)' >> "${HOME}/.zshrc" \
     && echo '# Uses vfs storage driver — required for nested containers on OrbStack/macOS' >> "${HOME}/.zshrc" \
     && echo 'alias start-docker="sudo dockerd --storage-driver=vfs > /tmp/dockerd.log 2>&1 & sleep 3 && echo Docker daemon started"' >> "${HOME}/.zshrc"
 
-# ── 14. Final setup ───────────────────────────────────────────────────────────
+# ── 15. Final setup ───────────────────────────────────────────────────────────
 WORKDIR /home/dev/workspace
 
 CMD ["zsh"]

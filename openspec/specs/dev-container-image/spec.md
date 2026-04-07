@@ -54,6 +54,17 @@ The image SHALL include a Java JDK (Temurin), Maven, and Gradle, all managed via
 - **WHEN** `java --version`, `mvn --version`, and `gradle --version` are run
 - **THEN** all print version strings without error
 
+### Requirement: Rust ecosystem
+The image SHALL include the Rust toolchain managed via `rustup`, providing `rustc`, `cargo`, `rustfmt`, and `clippy` from the stable channel. The `~/.cargo/bin` directory SHALL be on the `dev` user's PATH. The image SHALL also include `cargo-watch` and `cargo-edit` pre-installed.
+
+#### Scenario: Rust toolchain available
+- **WHEN** `rustc --version` and `cargo --version` are run
+- **THEN** both print version strings without error
+
+#### Scenario: Cargo bin on PATH
+- **WHEN** a new zsh shell is opened as the `dev` user
+- **THEN** `cargo` and `rustc` are found on PATH without additional configuration
+
 ### Requirement: Docker-in-Docker
 The image SHALL include the Docker CLI and daemon binaries, allowing Docker to be run inside the container when launched in privileged mode.
 
