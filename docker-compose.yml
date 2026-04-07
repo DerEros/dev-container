@@ -1,0 +1,13 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: dev-container:latest
+    container_name: dev-${PROJECT_NAME}
+    privileged: true
+    stdin_open: true
+    tty: true
+    volumes:
+      - ${WORKSPACE_PATH}:/home/dev/workspace
+      - ${CLAUDE_CONFIG_PATH}:/home/dev/.claude
