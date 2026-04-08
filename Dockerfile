@@ -9,6 +9,7 @@
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=C.UTF-8
 
 # ── 1. Base packages ──────────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y \
@@ -168,7 +169,16 @@ RUN echo '' >> "${HOME}/.zshrc" \
     && echo '# Uses vfs storage driver — required for nested containers on OrbStack/macOS' >> "${HOME}/.zshrc" \
     && echo 'alias start-docker="sudo dockerd --storage-driver=vfs > /tmp/dockerd.log 2>&1 & sleep 3 && echo Docker daemon started"' >> "${HOME}/.zshrc"
 
-# ── 15. Final setup ───────────────────────────────────────────────────────────
+# ── 15. tmux config ───────────────────────────────────────────────────────────
+# Use tmux-256color inside sessions (256-colour + true-colour passthrough).
+# Note: Powerline/Nerd Font glyph rendering in tmux requires LANG to contain
+# "UTF-8" so tmux enables UTF-8 mode — set via ENV LANG=C.UTF-8 above.
+RUN printf '%s\n' \
+    'set -g default-terminal "tmux-256color"' \
+    'set -ga terminal-overrides ",xterm*:Tc"' \
+    > "${HOME}/.tmux.conf"
+
+# ── 16. Final setup ───────────────────────────────────────────────────────────
 WORKDIR /home/dev/workspace
 
 CMD ["zsh"]
