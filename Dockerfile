@@ -37,6 +37,7 @@ RUN apt-get update && apt-get install -y \
     libxmlsec1-dev \
     libffi-dev \
     liblzma-dev \
+    jq \
     && rm -rf /var/lib/apt/lists/*
 
 # ── 2. Rename built-in ubuntu user (UID 1000) to dev ────────────────────────
@@ -80,8 +81,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# ── 6. Angular CLI + Claude Code (global npm) ────────────────────────────────
-RUN npm install -g @angular/cli @anthropic-ai/claude-code
+# ── 6. Angular CLI + Claude Code + OpenSpec + LSP servers (global npm) ───────
+RUN npm install -g @angular/cli @anthropic-ai/claude-code @fission-ai/openspec \
+    typescript typescript-language-server pyright
 
 # ── 7. Azure CLI ──────────────────────────────────────────────────────────────
 RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash \
@@ -107,11 +109,58 @@ RUN wget -O- https://apt.releases.hashicorp.com/gpg \
     && apt-get install -y terraform \
     && rm -rf /var/lib/apt/lists/*
 
+# ── 10. rust-analyzer (LSP) ──────────────────────────────────────────────────
+RUN ARCH=$(uname -m) \
+    && case "${ARCH}" in \
+         x86_64)  RA_TARGET="x86_64-unknown-linux-gnu" ;; \
+         aarch64) RA_TARGET="aarch64-unknown-linux-gnu" ;; \
+         *) echo "Unsupported architecture: ${ARCH}" && exit 1 ;; \
+       esac \
+    && curl -L -o /tmp/rust-analyzer.gz \
+         "https://github.com/rust-lang/rust-analyzer/releases/latest/download/rust-analyzer-${RA_TARGET}.gz" \
+    && gunzip /tmp/rust-analyzer.gz \
+    && mv /tmp/rust-analyzer /usr/local/bin/rust-analyzer \
+    && chmod +x /usr/local/bin/rust-analyzer
+
+# ── 11. eclipse.jdt.ls (Java LSP) ────────────────────────────────────────────
+RUN mkdir -p /opt/jdtls \
+    && JDTLS_VER=$(curl -fsSL "https://download.eclipse.org/jdtls/milestones/?d" \
+          | grep -o "href='/jdtls/milestones/[0-9][^']*'" \
+          | sed "s|href='/jdtls/milestones/||;s|'||g" \
+          | sort -V | tail -1) \
+    && JDTLS_FILE=$(curl -fsSL "https://download.eclipse.org/jdtls/milestones/${JDTLS_VER}/latest.txt" | tr -d '[:space:]') \
+    && curl -fsSL -o /tmp/jdtls.tar.gz \
+          "https://download.eclipse.org/jdtls/milestones/${JDTLS_VER}/${JDTLS_FILE}" \
+    && tar -xzf /tmp/jdtls.tar.gz -C /opt/jdtls \
+    && rm /tmp/jdtls.tar.gz
+
+RUN printf '#!/usr/bin/env bash\n\
+JAVA_HOME=/home/dev/.sdkman/candidates/java/current\n\
+exec "${JAVA_HOME}/bin/java" \\\n\
+  -Declipse.application=org.eclipse.jdt.ls.core.id1 \\\n\
+  -Dosgi.bundles.defaultStartLevel=4 \\\n\
+  -Declipse.product=org.eclipse.jdt.ls.core.product \\\n\
+  -Dlog.level=ALL \\\n\
+  -noverify \\\n\
+  -Xmx1G \\\n\
+  --add-modules=ALL-SYSTEM \\\n\
+  --add-opens java.base/java.util=ALL-UNNAMED \\\n\
+  --add-opens java.base/java.lang=ALL-UNNAMED \\\n\
+  -jar /opt/jdtls/plugins/org.eclipse.equinox.launcher_*.jar \\\n\
+  -configuration "${HOME}/.local/share/jdtls/config_linux" \\\n\
+  -data "${1:-${HOME}/jdtls-workspace}" \\\n\
+  "$@"\n' > /usr/local/bin/jdtls \
+    && chmod +x /usr/local/bin/jdtls
+
 # ── Switch to dev user for user-specific tools ───────────────────────────────
 USER dev
 WORKDIR /home/dev
 
-# ── 10. oh-my-zsh + Powerlevel10k + plugins ──────────────────────────────────
+# ── 12. jdtls user config (writable copy of /opt/jdtls/config_linux) ─────────
+RUN mkdir -p "${HOME}/.local/share/jdtls" \
+    && cp -r /opt/jdtls/config_linux "${HOME}/.local/share/jdtls/config_linux"
+
+# ── 13. oh-my-zsh + Powerlevel10k + plugins ──────────────────────────────────
 RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended \
     && git clone --depth=1 https://github.com/romkatv/powerlevel10k.git \
        "${HOME}/.oh-my-zsh/custom/themes/powerlevel10k" \
@@ -122,7 +171,7 @@ RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master
     && sed -i 's|ZSH_THEME="robbyrussell"|ZSH_THEME="powerlevel10k/powerlevel10k"|' "${HOME}/.zshrc" \
     && sed -i 's|plugins=(git)|plugins=(git zsh-autosuggestions zsh-syntax-highlighting)|' "${HOME}/.zshrc"
 
-# ── 11. pyenv + Python 3.12 ───────────────────────────────────────────────────
+# ── 14. pyenv + Python 3.12 ───────────────────────────────────────────────────
 ENV PYENV_ROOT="/home/dev/.pyenv"
 ENV PATH="${PYENV_ROOT}/bin:${PATH}"
 
@@ -137,7 +186,7 @@ RUN eval "$(${PYENV_ROOT}/bin/pyenv init -)" \
     && pyenv install 3.12 \
     && pyenv global 3.12
 
-# ── 12. SDKMAN + Java (Temurin 21 LTS) + Maven + Gradle ──────────────────────
+# ── 15. SDKMAN + Java (Temurin 21 LTS) + Maven + Gradle ──────────────────────
 ENV SDKMAN_DIR="/home/dev/.sdkman"
 
 RUN curl -s "https://get.sdkman.io" | bash \
@@ -152,7 +201,7 @@ RUN bash -c "source ${SDKMAN_DIR}/bin/sdkman-init.sh \
     && sdk install gradle \
     && sdk flush archives"
 
-# ── 13. Rust (via rustup) ─────────────────────────────────────────────────────
+# ── 16. Rust (via rustup) ─────────────────────────────────────────────────────
 ENV CARGO_HOME="/home/dev/.cargo"
 ENV RUSTUP_HOME="/home/dev/.rustup"
 
@@ -163,22 +212,36 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no
 
 RUN "${CARGO_HOME}/bin/cargo" install cargo-watch cargo-edit
 
-# ── 14. Docker alias for DinD convenience ────────────────────────────────────
+# ── 17. Docker alias for DinD convenience ────────────────────────────────────
 RUN echo '' >> "${HOME}/.zshrc" \
     && echo '# Start Docker daemon when needed (DinD)' >> "${HOME}/.zshrc" \
     && echo '# Uses vfs storage driver — required for nested containers on OrbStack/macOS' >> "${HOME}/.zshrc" \
     && echo 'alias start-docker="sudo dockerd --storage-driver=vfs > /tmp/dockerd.log 2>&1 & sleep 3 && echo Docker daemon started"' >> "${HOME}/.zshrc"
 
-# ── 15. tmux config ───────────────────────────────────────────────────────────
+# ── 18. tmux config + Catppuccin theme ───────────────────────────────────────
 # Use tmux-256color inside sessions (256-colour + true-colour passthrough).
 # Note: Powerline/Nerd Font glyph rendering in tmux requires LANG to contain
 # "UTF-8" so tmux enables UTF-8 mode — set via ENV LANG=C.UTF-8 above.
+RUN git clone -b v2.1.3 https://github.com/catppuccin/tmux.git \
+       "${HOME}/.tmux/plugins/catppuccin/tmux"
+
 RUN printf '%s\n' \
     'set -g default-terminal "tmux-256color"' \
     'set -ga terminal-overrides ",xterm*:Tc"' \
+    '' \
+    '# Catppuccin theme (Mocha)' \
+    'set -g @catppuccin_flavor "mocha"' \
+    'set -g @catppuccin_window_status_style "rounded"' \
+    'run ~/.tmux/plugins/catppuccin/tmux/catppuccin.tmux' \
+    '' \
+    '# Status bar' \
+    'set -g status-right-length 100' \
+    'set -g status-left-length 100' \
+    'set -g status-left ""' \
+    'set -g status-right "#{E:@catppuccin_status_application}#{E:@catppuccin_status_session}"' \
     > "${HOME}/.tmux.conf"
 
-# ── 16. Final setup ───────────────────────────────────────────────────────────
+# ── 19. Final setup ───────────────────────────────────────────────────────────
 WORKDIR /home/dev/workspace
 
 CMD ["zsh"]
