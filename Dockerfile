@@ -1,5 +1,6 @@
 # Dev Container — Ubuntu 24.04
 # Tools: Node.js LTS, Python (pyenv), Java/Maven/Gradle (sdkman), Rust (rustup),
+#        .NET SDK 10.0, Godot 4.6.2 (.NET build, headless),
 #        Angular CLI, GitHub CLI, Docker-in-Docker, Azure CLI,
 #        kubectl, Terraform, Claude Code, zsh + tmux + oh-my-zsh + Powerlevel10k
 #
@@ -109,7 +110,31 @@ RUN wget -O- https://apt.releases.hashicorp.com/gpg \
     && apt-get install -y terraform \
     && rm -rf /var/lib/apt/lists/*
 
-# ── 10. rust-analyzer (LSP) ──────────────────────────────────────────────────
+# ── 10. .NET SDK 10.0 ────────────────────────────────────────────────────────
+RUN curl -fsSL https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb \
+       -o /tmp/packages-microsoft-prod.deb \
+    && dpkg -i /tmp/packages-microsoft-prod.deb \
+    && rm /tmp/packages-microsoft-prod.deb \
+    && apt-get update \
+    && apt-get install -y dotnet-sdk-10.0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── 11. Godot 4.6.2 (.NET build, linux/arm64) ────────────────────────────────
+ENV GODOT_BIN=/usr/local/bin/godot
+
+RUN mkdir -p /opt/godot \
+    && curl -fsSL -o /tmp/godot.zip \
+         "https://github.com/godotengine/godot-builds/releases/download/4.6.2-stable/Godot_v4.6.2-stable_mono_linux_arm64.zip" \
+    && unzip /tmp/godot.zip -d /tmp/godot_extract \
+    && mv /tmp/godot_extract/Godot_v4.6.2-stable_mono_linux_arm64/Godot_v4.6.2-stable_mono_linux.arm64 \
+          /opt/godot/godot \
+    && mv /tmp/godot_extract/Godot_v4.6.2-stable_mono_linux_arm64/GodotSharp \
+          /opt/godot/GodotSharp \
+    && chmod +x /opt/godot/godot \
+    && ln -s /opt/godot/godot /usr/local/bin/godot \
+    && rm -rf /tmp/godot.zip /tmp/godot_extract
+
+# ── 13. rust-analyzer (LSP) ──────────────────────────────────────────────────
 RUN ARCH=$(uname -m) \
     && case "${ARCH}" in \
          x86_64)  RA_TARGET="x86_64-unknown-linux-gnu" ;; \
@@ -122,7 +147,7 @@ RUN ARCH=$(uname -m) \
     && mv /tmp/rust-analyzer /usr/local/bin/rust-analyzer \
     && chmod +x /usr/local/bin/rust-analyzer
 
-# ── 11. eclipse.jdt.ls (Java LSP) ────────────────────────────────────────────
+# ── 14. eclipse.jdt.ls (Java LSP) ────────────────────────────────────────────
 RUN mkdir -p /opt/jdtls \
     && JDTLS_VER=$(curl -fsSL "https://download.eclipse.org/jdtls/milestones/?d" \
           | grep -o "href='/jdtls/milestones/[0-9][^']*'" \
@@ -156,11 +181,11 @@ exec "${JAVA_HOME}/bin/java" \\\n\
 USER dev
 WORKDIR /home/dev
 
-# ── 12. jdtls user config (writable copy of /opt/jdtls/config_linux) ─────────
+# ── 15. jdtls user config (writable copy of /opt/jdtls/config_linux) ─────────
 RUN mkdir -p "${HOME}/.local/share/jdtls" \
     && cp -r /opt/jdtls/config_linux "${HOME}/.local/share/jdtls/config_linux"
 
-# ── 13. oh-my-zsh + Powerlevel10k + plugins ──────────────────────────────────
+# ── 16. oh-my-zsh + Powerlevel10k + plugins ──────────────────────────────────
 RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended \
     && git clone --depth=1 https://github.com/romkatv/powerlevel10k.git \
        "${HOME}/.oh-my-zsh/custom/themes/powerlevel10k" \
@@ -171,7 +196,7 @@ RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master
     && sed -i 's|ZSH_THEME="robbyrussell"|ZSH_THEME="powerlevel10k/powerlevel10k"|' "${HOME}/.zshrc" \
     && sed -i 's|plugins=(git)|plugins=(git zsh-autosuggestions zsh-syntax-highlighting)|' "${HOME}/.zshrc"
 
-# ── 14. pyenv + Python 3.12 ───────────────────────────────────────────────────
+# ── 17. pyenv + Python 3.12 ───────────────────────────────────────────────────
 ENV PYENV_ROOT="/home/dev/.pyenv"
 ENV PATH="${PYENV_ROOT}/bin:${PATH}"
 
@@ -186,7 +211,11 @@ RUN eval "$(${PYENV_ROOT}/bin/pyenv init -)" \
     && pyenv install 3.12 \
     && pyenv global 3.12
 
-# ── 15. SDKMAN + Java (Temurin 21 LTS) + Maven + Gradle ──────────────────────
+# ── 18. gdtoolkit (GDScript linter/formatter) ────────────────────────────────
+RUN eval "$(${PYENV_ROOT}/bin/pyenv init -)" \
+    && pip install gdtoolkit
+
+# ── 19. SDKMAN + Java (Temurin 21 LTS) + Maven + Gradle ──────────────────────
 ENV SDKMAN_DIR="/home/dev/.sdkman"
 
 RUN curl -s "https://get.sdkman.io" | bash \
@@ -201,7 +230,7 @@ RUN bash -c "source ${SDKMAN_DIR}/bin/sdkman-init.sh \
     && sdk install gradle \
     && sdk flush archives"
 
-# ── 16. Rust (via rustup) ─────────────────────────────────────────────────────
+# ── 20. Rust (via rustup) ─────────────────────────────────────────────────────
 ENV CARGO_HOME="/home/dev/.cargo"
 ENV RUSTUP_HOME="/home/dev/.rustup"
 
@@ -212,13 +241,19 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no
 
 RUN "${CARGO_HOME}/bin/cargo" install cargo-watch cargo-edit
 
-# ── 17. Docker alias for DinD convenience ────────────────────────────────────
+# ── 21. csharp-ls (C# LSP server) ────────────────────────────────────────────
+RUN dotnet tool install -g csharp-ls \
+    && echo '' >> "${HOME}/.zshrc" \
+    && echo '# .NET global tools' >> "${HOME}/.zshrc" \
+    && echo 'export PATH="$HOME/.dotnet/tools:$PATH"' >> "${HOME}/.zshrc"
+
+# ── 22. Docker alias for DinD convenience ────────────────────────────────────
 RUN echo '' >> "${HOME}/.zshrc" \
     && echo '# Start Docker daemon when needed (DinD)' >> "${HOME}/.zshrc" \
     && echo '# Uses vfs storage driver — required for nested containers on OrbStack/macOS' >> "${HOME}/.zshrc" \
     && echo 'alias start-docker="sudo dockerd --storage-driver=vfs > /tmp/dockerd.log 2>&1 & sleep 3 && echo Docker daemon started"' >> "${HOME}/.zshrc"
 
-# ── 18. tmux config + Catppuccin theme ───────────────────────────────────────
+# ── 23. tmux config + Catppuccin theme ───────────────────────────────────────
 # Use tmux-256color inside sessions (256-colour + true-colour passthrough).
 # Note: Powerline/Nerd Font glyph rendering in tmux requires LANG to contain
 # "UTF-8" so tmux enables UTF-8 mode — set via ENV LANG=C.UTF-8 above.
@@ -241,7 +276,7 @@ RUN printf '%s\n' \
     'set -g status-right "#{E:@catppuccin_status_application}#{E:@catppuccin_status_session}"' \
     > "${HOME}/.tmux.conf"
 
-# ── 19. Final setup ───────────────────────────────────────────────────────────
+# ── 24. Final setup ───────────────────────────────────────────────────────────
 WORKDIR /home/dev/workspace
 
 CMD ["zsh"]
