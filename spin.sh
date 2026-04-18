@@ -4,6 +4,99 @@ set -euo pipefail
 # Resolve script location regardless of symlinks or caller's CWD
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# ---------------------------------------------------------------------------
+# Subcommand dispatch — check $1 before treating it as a project name
+# ---------------------------------------------------------------------------
+CMD="${1:-}"
+
+case "${CMD}" in
+
+  list)
+    # Print all dev-* containers with running/stopped status
+    docker ps -a \
+      --filter "name=^dev-" \
+      --format "{{.Names}}\t{{.Status}}" \
+    | while IFS=$'\t' read -r name status; do
+        project="${name#dev-}"
+        if [[ "${status}" == Up* ]]; then
+          state="running"
+        else
+          state="stopped"
+        fi
+        printf "%-30s %s\n" "${project}" "${state}"
+      done
+    exit 0
+    ;;
+
+  delete)
+    PROJECT_NAME="${2:-}"
+    if [[ -z "${PROJECT_NAME}" ]]; then
+      echo "Usage: spin.sh delete <name> [--purge]" >&2
+      exit 1
+    fi
+
+    PURGE=false
+    for arg in "${@:3}"; do
+      [[ "${arg}" == "--purge" ]] && PURGE=true
+    done
+
+    CONTAINER_NAME="dev-${PROJECT_NAME}"
+    WORKSPACE="${HOME}/workspace/${PROJECT_NAME}"
+    CONTAINER_ROOT="${HOME}/.dev-containers/${PROJECT_NAME}"
+
+    # Check container existence before prompting
+    CONTAINER_EXISTS=false
+    if docker ps -a --filter "name=^${CONTAINER_NAME}$" --format '{{.Names}}' \
+        | grep -q "^${CONTAINER_NAME}$"; then
+      CONTAINER_EXISTS=true
+    fi
+
+    if [[ "${CONTAINER_EXISTS}" == false && "${PURGE}" == false ]]; then
+      echo "Container ${CONTAINER_NAME} not found."
+      exit 0
+    fi
+
+    # First confirmation — always required
+    read -r -p "Remove container ${CONTAINER_NAME}? [y/N] " confirm
+    if [[ "${confirm}" != "y" && "${confirm}" != "Y" ]]; then
+      echo "Aborted."
+      exit 0
+    fi
+
+    # Remove container if it exists
+    if [[ "${CONTAINER_EXISTS}" == true ]]; then
+      echo "→ Removing container: ${CONTAINER_NAME}"
+      docker rm -f "${CONTAINER_NAME}"
+    fi
+
+    if [[ "${PURGE}" == true ]]; then
+      # Second confirmation — type the project name
+      read -r -p "Type '${PROJECT_NAME}' to confirm purge of host directories: " name_confirm
+      if [[ "${name_confirm}" != "${PROJECT_NAME}" ]]; then
+        echo "Name did not match — purge aborted."
+        exit 0
+      fi
+
+      # Remove host directories if they exist (idempotent)
+      if [[ -d "${WORKSPACE}" ]]; then
+        echo "→ Removing workspace: ${WORKSPACE}"
+        rm -rf "${WORKSPACE}"
+      fi
+      if [[ -d "${CONTAINER_ROOT}" ]]; then
+        echo "→ Removing config: ${CONTAINER_ROOT}"
+        rm -rf "${CONTAINER_ROOT}"
+      fi
+    fi
+
+    exit 0
+    ;;
+
+esac
+
+# ---------------------------------------------------------------------------
+# Default: attach-or-create a dev container
+# ---------------------------------------------------------------------------
+
 # Project name: first arg or name of current directory
 PROJECT_NAME="${1:-$(basename "$PWD")}"
 
