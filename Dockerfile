@@ -205,6 +205,9 @@ RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master
     && sed -i 's|ZSH_THEME="robbyrussell"|ZSH_THEME="powerlevel10k/powerlevel10k"|' "${HOME}/.zshrc" \
     && sed -i 's|plugins=(git)|plugins=(git zsh-autosuggestions zsh-syntax-highlighting)|' "${HOME}/.zshrc"
 
+# ── 17b. Pre-configured Powerlevel10k (skip wizard) ──────────────────────────
+COPY --chown=dev:dev config/p10k.zsh "${HOME}/.p10k.zsh"
+
 # ── 18. pyenv + Python 3.12 ───────────────────────────────────────────────────
 ENV PYENV_ROOT="/home/dev/.pyenv"
 ENV PATH="${PYENV_ROOT}/bin:${PATH}"
