@@ -272,21 +272,7 @@ RUN echo '' >> "${HOME}/.zshrc" \
 RUN git clone -b v2.1.3 https://github.com/catppuccin/tmux.git \
        "${HOME}/.tmux/plugins/catppuccin/tmux"
 
-RUN printf '%s\n' \
-    'set -g default-terminal "tmux-256color"' \
-    'set -ga terminal-overrides ",xterm*:Tc"' \
-    '' \
-    '# Catppuccin theme (Mocha)' \
-    'set -g @catppuccin_flavor "mocha"' \
-    'set -g @catppuccin_window_status_style "rounded"' \
-    'run ~/.tmux/plugins/catppuccin/tmux/catppuccin.tmux' \
-    '' \
-    '# Status bar' \
-    'set -g status-right-length 100' \
-    'set -g status-left-length 100' \
-    'set -g status-left ""' \
-    'set -g status-right "#{E:@catppuccin_status_application}#{E:@catppuccin_status_session}"' \
-    > "${HOME}/.tmux.conf"
+COPY config/tmux.conf /home/dev/.tmux.conf
 
 # ── 25. Final setup ───────────────────────────────────────────────────────────
 WORKDIR /home/dev/workspace
