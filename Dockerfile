@@ -2,7 +2,7 @@
 # Tools: Node.js LTS, Python (pyenv), Java/Maven/Gradle (sdkman), Rust (rustup),
 #        .NET SDK 10.0, Godot 4.6.2 (.NET build, headless),
 #        Angular CLI, GitHub CLI, Docker-in-Docker, Azure CLI,
-#        kubectl, Terraform, Claude Code, zsh + tmux + oh-my-zsh + Powerlevel10k
+#        kubectl, Terraform, Claude Code (user-install), zsh + tmux + oh-my-zsh + Powerlevel10k
 #
 # Build: docker build -t dev-container .
 # Use:   spin.sh <project-name>
@@ -83,7 +83,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
     && rm -rf /var/lib/apt/lists/*
 
 # ── 6. Angular CLI + Claude Code + OpenSpec + LSP servers (global npm) ───────
-RUN npm install -g @angular/cli @anthropic-ai/claude-code @fission-ai/openspec \
+RUN npm install -g @angular/cli @fission-ai/openspec \
     typescript typescript-language-server pyright
 
 # ── 7. Azure CLI ──────────────────────────────────────────────────────────────
@@ -185,7 +185,16 @@ WORKDIR /home/dev
 RUN mkdir -p "${HOME}/.local/share/jdtls" \
     && cp -r /opt/jdtls/config_linux "${HOME}/.local/share/jdtls/config_linux"
 
-# ── 16. oh-my-zsh + Powerlevel10k + plugins ──────────────────────────────────
+# ── 16. Claude Code (user-owned npm prefix, enables auto-update) ─────────────
+# Installed separately from the root npm globals so the dev user can write to
+# the prefix and Claude Code's auto-update mechanism works without sudo.
+RUN npm config set prefix "${HOME}/.npm-global" \
+    && npm install -g @anthropic-ai/claude-code \
+    && echo '' >> "${HOME}/.zshrc" \
+    && echo '# Claude Code (user-local npm prefix)' >> "${HOME}/.zshrc" \
+    && echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> "${HOME}/.zshrc"
+
+# ── 17. oh-my-zsh + Powerlevel10k + plugins ──────────────────────────────────
 RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended \
     && git clone --depth=1 https://github.com/romkatv/powerlevel10k.git \
        "${HOME}/.oh-my-zsh/custom/themes/powerlevel10k" \
@@ -196,7 +205,7 @@ RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master
     && sed -i 's|ZSH_THEME="robbyrussell"|ZSH_THEME="powerlevel10k/powerlevel10k"|' "${HOME}/.zshrc" \
     && sed -i 's|plugins=(git)|plugins=(git zsh-autosuggestions zsh-syntax-highlighting)|' "${HOME}/.zshrc"
 
-# ── 17. pyenv + Python 3.12 ───────────────────────────────────────────────────
+# ── 18. pyenv + Python 3.12 ───────────────────────────────────────────────────
 ENV PYENV_ROOT="/home/dev/.pyenv"
 ENV PATH="${PYENV_ROOT}/bin:${PATH}"
 
@@ -211,11 +220,11 @@ RUN eval "$(${PYENV_ROOT}/bin/pyenv init -)" \
     && pyenv install 3.12 \
     && pyenv global 3.12
 
-# ── 18. gdtoolkit (GDScript linter/formatter) ────────────────────────────────
+# ── 19. gdtoolkit (GDScript linter/formatter) ────────────────────────────────
 RUN eval "$(${PYENV_ROOT}/bin/pyenv init -)" \
     && pip install gdtoolkit
 
-# ── 19. SDKMAN + Java (Temurin 21 LTS) + Maven + Gradle ──────────────────────
+# ── 20. SDKMAN + Java (Temurin 21 LTS) + Maven + Gradle ──────────────────────
 ENV SDKMAN_DIR="/home/dev/.sdkman"
 
 RUN curl -s "https://get.sdkman.io" | bash \
@@ -230,7 +239,7 @@ RUN bash -c "source ${SDKMAN_DIR}/bin/sdkman-init.sh \
     && sdk install gradle \
     && sdk flush archives"
 
-# ── 20. Rust (via rustup) ─────────────────────────────────────────────────────
+# ── 21. Rust (via rustup) ─────────────────────────────────────────────────────
 ENV CARGO_HOME="/home/dev/.cargo"
 ENV RUSTUP_HOME="/home/dev/.rustup"
 
@@ -241,19 +250,19 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no
 
 RUN "${CARGO_HOME}/bin/cargo" install cargo-watch cargo-edit
 
-# ── 21. csharp-ls (C# LSP server) ────────────────────────────────────────────
+# ── 22. csharp-ls (C# LSP server) ────────────────────────────────────────────
 RUN dotnet tool install -g csharp-ls \
     && echo '' >> "${HOME}/.zshrc" \
     && echo '# .NET global tools' >> "${HOME}/.zshrc" \
     && echo 'export PATH="$HOME/.dotnet/tools:$PATH"' >> "${HOME}/.zshrc"
 
-# ── 22. Docker alias for DinD convenience ────────────────────────────────────
+# ── 23. Docker alias for DinD convenience ────────────────────────────────────
 RUN echo '' >> "${HOME}/.zshrc" \
     && echo '# Start Docker daemon when needed (DinD)' >> "${HOME}/.zshrc" \
     && echo '# Uses vfs storage driver — required for nested containers on OrbStack/macOS' >> "${HOME}/.zshrc" \
     && echo 'alias start-docker="sudo dockerd --storage-driver=vfs > /tmp/dockerd.log 2>&1 & sleep 3 && echo Docker daemon started"' >> "${HOME}/.zshrc"
 
-# ── 23. tmux config + Catppuccin theme ───────────────────────────────────────
+# ── 24. tmux config + Catppuccin theme ───────────────────────────────────────
 # Use tmux-256color inside sessions (256-colour + true-colour passthrough).
 # Note: Powerline/Nerd Font glyph rendering in tmux requires LANG to contain
 # "UTF-8" so tmux enables UTF-8 mode — set via ENV LANG=C.UTF-8 above.
@@ -276,7 +285,7 @@ RUN printf '%s\n' \
     'set -g status-right "#{E:@catppuccin_status_application}#{E:@catppuccin_status_session}"' \
     > "${HOME}/.tmux.conf"
 
-# ── 24. Final setup ───────────────────────────────────────────────────────────
+# ── 25. Final setup ───────────────────────────────────────────────────────────
 WORKDIR /home/dev/workspace
 
 CMD ["zsh"]
